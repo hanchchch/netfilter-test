@@ -13,16 +13,6 @@
 
 char host[HOSTNAME_MAX_SIZE];
 
-
-void dump(unsigned char* buf, int size) {
-	int i;
-	for (i = 0; i < size; i++) {
-		if (i % 16 == 0)
-			printf("\n");
-		printf("%c", buf[i]);
-	}
-}
-
 bool is_ipv4_pkt(u_char* header) {
 	libnet_ipv4_hdr* ipv4_hdr = (libnet_ipv4_hdr*)header;
 	if((*ipv4_hdr).ip_v != 4) return false;
@@ -42,11 +32,9 @@ char* locate_host(u_char* data) {
 	return NULL;
 }
 
-bool is_match_host(u_char* data, int size) {
+bool is_match_host(u_char* data) {
 	data += sizeof(libnet_ipv4_hdr);
 	data += sizeof(libnet_tcp_hdr);
-	size -= sizeof(libnet_ipv4_hdr);
-	size -= sizeof(libnet_tcp_hdr);
 
 	char* host_start = locate_host(data);
 	if (host_start == NULL) return false;
@@ -61,42 +49,23 @@ bool is_match_host(u_char* data, int size) {
 	return true;
 }
 
-static int check_pkt(struct nfq_data* tb, u_int32_t* id) {
+static bool check_pkt(struct nfq_data* tb, u_int32_t* id) {
 	struct nfqnl_msg_packet_hdr *ph;
-	struct nfqnl_msg_packet_hw *hwph;
-	uint32_t mark, ifi, uid, gid;
-	int ret;
-	unsigned char *data, *secdata;
+	int size;
+	unsigned char *data;
 
 	ph = nfq_get_msg_packet_hdr(tb);
-	if (ph) {
-		*id = ntohl(ph->packet_id);
+	if (ph) *id = ntohl(ph->packet_id);
+	
+	size = nfq_get_payload(tb, &data);
 
-	}
-
-	hwph = nfq_get_packet_hw(tb);
-	if (hwph) {
-		int i, hlen = ntohs(hwph->hw_addrlen);
-	}
-
-	mark = nfq_get_nfmark(tb);
-
-	ifi = nfq_get_indev(tb);
-	ifi = nfq_get_outdev(tb);
-	ifi = nfq_get_physindev(tb);
-	ifi = nfq_get_physoutdev(tb);
-	nfq_get_uid(tb, &uid);
-	nfq_get_gid(tb, &gid);
-	ret = nfq_get_secctx(tb, &secdata);
-	ret = nfq_get_payload(tb, &data);
-
-	if (!is_ipv4_pkt(data)) return 0;
+	if (!is_ipv4_pkt(data)) return false;
 	puts("ipv4 packet.");
 	
-	if (!is_match_host(data, ret)) return 0;
+	if (!is_match_host(data)) return false;
 	puts("host matched.");
 
-	return 1;
+	return true;
 }
 
 static int netfilter_callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data) {
